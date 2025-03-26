@@ -1,4 +1,4 @@
-name: GitHub Follow Sync
+name: LinkedIn Auto Post
 
 on:
   schedule:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:      # Allow manual trigger
 
 jobs:
-  sync:
+  post:
     runs-on: ubuntu-latest
     
     steps:
@@ -22,13 +22,19 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         
-    - name: Run follow sync script
+    - name: Run LinkedIn poster
       env:
-        GH_USERNAME: ${{ secrets.GH_USERNAME }}
-        GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        LINKEDIN_CLIENT_ID: ${{ secrets.LINKEDIN_CLIENT_ID }}
+        LINKEDIN_CLIENT_SECRET: ${{ secrets.LINKEDIN_CLIENT_SECRET }}
+        LINKEDIN_USERNAME: ${{ secrets.LINKEDIN_USERNAME }}
+        LINKEDIN_PASSWORD: ${{ secrets.LINKEDIN_PASSWORD }}
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        REDIRECT_URI: ${{ secrets.REDIRECT_URI }}
+        TOKEN_ENCRYPTION_KEY: ${{ secrets.TOKEN_ENCRYPTION_KEY }}
+        DEBUG: false
+        LOG_LEVEL: INFO
       run: |
         python run.py
-      continue-on-error: false
       
     - name: Report failure
       if: failure()
@@ -38,6 +44,6 @@ jobs:
           github.rest.issues.create({
             owner: context.repo.owner,
             repo: context.repo.repo,
-            title: 'Follow Sync Workflow Failed',
-            body: `Workflow failed at ${new Date().toISOString()}\nSee: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+            title: 'LinkedIn Auto Post Failed',
+            body: `The LinkedIn auto-posting workflow failed at ${new Date().toISOString()}\nSee: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
           })
