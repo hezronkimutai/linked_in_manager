@@ -81,17 +81,28 @@ class OAuthHandler:
 
         print("Starting automated authorization...")
         options = webdriver.ChromeOptions()
-        options.add_argument('--headless')  # Required for CI environment
+        # Remove headless mode to reduce detection likelihood
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-dev-shm-usage')
         options.add_argument('--disable-gpu')
         options.add_argument('--window-size=1920,1080')
         options.add_argument('--start-maximized')
         options.add_argument('--disable-blink-features=AutomationControlled')
-        options.add_argument('--user-data-dir=/tmp/chrome-data')  # Specify unique user data directory
-        options.add_argument('--remote-debugging-port=9222')  # Add debugging port
-        options.add_experimental_option('excludeSwitches', ['enable-automation'])
+        
+        # Use persistent user data directory in project folder
+        user_data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'chrome-data')
+        os.makedirs(user_data_dir, exist_ok=True)
+        options.add_argument(f'--user-data-dir={user_data_dir}')
+        
+        # Enhanced anti-detection measures
+        options.add_argument('--disable-infobars')
+        options.add_argument('--disable-notifications')
+        options.add_argument('--disable-blink-features=AutomationControlled')
+        options.add_experimental_option('excludeSwitches', ['enable-automation', 'enable-logging'])
         options.add_experimental_option('useAutomationExtension', False)
+        
+        # Add random user agent to appear more human-like
+        options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
         
         try:
             print("Initializing Chrome WebDriver...")
@@ -115,24 +126,67 @@ class OAuthHandler:
             try:
                 print("Waiting for login form...")
                 # Wait for and fill in login form
+                # Wait for and fill in login form with delays
                 username_field = WebDriverWait(driver, 10).until(
                     EC.presence_of_element_located((By.ID, "username"))
                 )
-                username_field.send_keys(self.linkedin_username)
+                
+                # Type username with random delays
+                for char in self.linkedin_username:
+                    username_field.send_keys(char)
+                    await asyncio.sleep(0.1)  # Simulate human typing
                 print("Username entered...")
+                await asyncio.sleep(1)  # Natural pause after username
                 
                 password_field = driver.find_element(By.ID, "password")
-                password_field.send_keys(self.linkedin_password)
+                # Type password with random delays
+                for char in self.linkedin_password:
+                    password_field.send_keys(char)
+                    await asyncio.sleep(0.1)  # Simulate human typing
                 print("Password entered...")
+                await asyncio.sleep(1)  # Natural pause before submitting
                 
-                submit_button = driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
-                submit_button.click()
-                print("Login form submitted...")
+                # Try to find and click submit button with extended wait
+                try:
+                    submit_button = WebDriverWait(driver, 10).until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, "button[type='submit']"))
+                    )
+                    submit_button.click()
+                    print("Login form submitted...")
+                except Exception as e:
+                    print(f"Error clicking submit button: {str(e)}")
+                    print(f"Current page source: {driver.page_source}")
+                    raise
 
-                # Wait for redirect to callback URL
-                print("Waiting for redirect...")
+                # Wait for redirect and handle security challenges
+                print("Waiting for redirect or security challenge...")
                 wait = WebDriverWait(driver, 20)
-                wait.until(lambda driver: self.redirect_uri in driver.current_url)
+                
+                def check_url_condition(driver):
+                    current_url = driver.current_url
+                    print(f"Checking URL: {current_url}")
+                    
+                    if "checkpoint/challenge" in current_url:
+                        print("Security challenge detected!")
+                        return False
+                    
+                    if self.redirect_uri in current_url:
+                        print("Successfully redirected to callback URL")
+                        return True
+                    
+                    return False
+                
+                try:
+                    wait.until(check_url_condition)
+                except Exception as e:
+                    if "checkpoint/challenge" in driver.current_url:
+                        print("LinkedIn security challenge detected. Manual intervention required.")
+                        print("Please complete the security challenge manually.")
+                        # Fall back to manual authorization
+                        driver.quit()
+                        return await self.manual_authorization()
+                    raise e
+                
                 print(f"Current URL after redirect: {driver.current_url}")
             except Exception as e:
                 print(f"Error during login process: {str(e)}")
